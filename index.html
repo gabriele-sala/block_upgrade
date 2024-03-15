@@ -6,17 +6,13 @@
 </head>
 <body>
     <h1>Block Time Estimator</h1>
-    <input type="number" id="targetBlock" placeholder="Enter Target Block Number">
-    <button onclick="estimateTime()">Estimate Time</button>
+    <form id="blockForm">
+        <label for="targetBlock">Enter Target Block Number:</label>
+        <input type="number" id="targetBlock" required>
+        <button type="submit">Estimate Time to Target Block</button>
+    </form>
     <div id="result"></div>
 
-    <script>
-        async function estimateTime() {
-            const targetBlock = document.getElementById('targetBlock').value;
-            const response = await fetch(`/api/api?targetBlock=${targetBlock}`);
-            const data = await response.json();
-            document.getElementById('result').innerText = `Estimated Time: ${data.estimatedTime}`;
-        }
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
