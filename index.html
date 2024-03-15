@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Block Time Estimator</title>
+</head>
+<body>
+    <h1>Block Time Estimator</h1>
+    <input type="number" id="targetBlock" placeholder="Enter Target Block Number">
+    <button onclick="estimateTime()">Estimate Time</button>
+    <div id="result"></div>
+
+    <script>
+        async function estimateTime() {
+            const targetBlock = document.getElementById('targetBlock').value;
+            const response = await fetch(`/api/api?targetBlock=${targetBlock}`);
+            const data = await response.json();
+            document.getElementById('result').innerText = `Estimated Time: ${data.estimatedTime}`;
+        }
+    </script>
+</body>
+</html>
