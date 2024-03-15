@@ -1,27 +1,86 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const app = express();
-const PORT = process.env.PORT || 3000;
+import express from 'express';
+import fetch from 'node-fetch';
+import cors from 'cors';
 
-// Serve static files from the 'public' directory
+const app = express();
+const PORT = 3000;
+
+app.use(cors());
 app.use(express.static('public'));
 
-// Endpoint to calculate the estimated time to a target block
-app.get('/estimate-time/:targetBlock', async (req, res) => {
-    const targetBlock = parseInt(req.params.targetBlock);
-    // Placeholder for current and start block numbers
-    // These should ideally be dynamically determined
-    const currentBlock = 450000; // Example current block number
-    const blocksToEstimate = 10000;
-    const startBlock = currentBlock - blocksToEstimate;
-
+async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 8000 } = options;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
     try {
-        const startTime = await fetchBlockTimestamp(startBlock);
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal  
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error('Request timed out');
+        }
+        throw error;
+    }
+}
+
+async function fetchLatestBlockNumber() {
+    const apiUrl = 'https://api.dusk.network/v1/blocks?node=nodes.dusk.network';
+    try {
+        const response = await fetchWithTimeout(apiUrl);
+        if (!response.ok) {
+            throw new Error(`API call failed with status: ${response.status}`);
+        }
+        const jsonData = await response.json();
+        const latestBlock = jsonData.data.blocks[0];
+        return latestBlock.header.height;
+    } catch (error) {
+        console.error(`Failed to fetch the latest block number:`, error);
+        throw error;
+    }
+}
+
+async function fetchBlockTimestamp(blockNumber) {
+    const apiUrl = 'https://api.dusk.network/v1/blocks?node=nodes.dusk.network';
+    try {
+        const response = await fetchWithTimeout(apiUrl);
+        if (!response.ok) {
+            throw new Error(`API call failed with status: ${response.status}`);
+        }
+        const jsonData = await response.json();
+        const block = jsonData.data.blocks.find(b => b.header.height === blockNumber);
+        if (!block) {
+            throw new Error(`Block with height ${blockNumber} not found`);
+        }
+        return new Date(block.header.timestamp).getTime() / 1000;
+    } catch (error) {
+        console.error(`Failed to fetch block timestamp for block number ${blockNumber}:`, error);
+        throw error;
+    }
+}
+
+app.get('/latest-block', async (req, res) => {
+    try {
+        const latestBlockNumber = await fetchLatestBlockNumber();
+        res.json({ latestBlockNumber });
+    } catch (error) {
+        console.error('Error fetching the latest block number:', error);
+        res.status(500).send('Failed to fetch the latest block number.');
+    }
+});
+
+app.get('/estimate-time/:targetBlock', async (req, res) => {
+    try {
+        const currentBlock = await fetchLatestBlockNumber();
+        const targetBlock = parseInt(req.params.targetBlock);
+        const startTime = await fetchBlockTimestamp(currentBlock - 50);
         const endTime = await fetchBlockTimestamp(currentBlock);
-        const averageBlockTime = (endTime - startTime) / blocksToEstimate;
+        const averageBlockTime = (endTime - startTime) / 50;
         const timeToTarget = (targetBlock - currentBlock) * averageBlockTime;
         const estimatedTime = convertSecondsToDHMS(timeToTarget);
-
         res.json({ estimatedTime });
     } catch (error) {
         console.error('Error:', error);
@@ -29,33 +88,6 @@ app.get('/estimate-time/:targetBlock', async (req, res) => {
     }
 });
 
-// Function to fetch block timestamp
-async function fetchBlockTimestamp(blockNumber) {
-    const apiUrl = `https://api.dusk.network/v1/blocks?node=nodes.dusk.network`;
-    try {
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`API call failed with status: ${response.status}`);
-        }
-        const data = await response.json();
-
-        // Assuming the data.blocks is an array of blocks and finding the specific block
-        // You may need to adjust logic based on actual API response and how blocks are fetched
-        const block = data.blocks.find(b => b.header.height === blockNumber);
-        if (!block) {
-            throw new Error('Block not found');
-        }
-
-        // Convert timestamp string to seconds since epoch
-        const timestampInSeconds = new Date(block.header.timestamp).getTime() / 1000;
-        return timestampInSeconds;
-    } catch (error) {
-        console.error(`Failed to fetch block timestamp for block number ${blockNumber}:`, error);
-        throw error;
-    }
-}
-
-// Convert seconds to a more readable format
 function convertSecondsToDHMS(seconds) {
     const days = Math.floor(seconds / (3600 * 24));
     const hours = Math.floor((seconds % (3600 * 24)) / 3600);
@@ -65,4 +97,7 @@ function convertSecondsToDHMS(seconds) {
 }
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+
+
+
 
